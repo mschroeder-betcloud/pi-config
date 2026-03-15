@@ -33,15 +33,13 @@ export async function launchPiSession({ session, piArgs, piBin, originalCwd }) {
 		? [...piArgs]
 		: ["--extension", WORKTREE_EXTENSION_PATH, ...piArgs];
 
-	const env = {
-		...process.env,
-		PI_WORKTREE_SESSION: "1",
-		PI_WORKTREE_NAME: session.name,
-		PI_WORKTREE_PATH: session.path,
-		PI_WORKTREE_BRANCH: session.branch,
-		PI_WORKTREE_REPO_ROOT: session.repoRoot,
-		PI_WORKTREE_ORIGINAL_CWD: originalCwd,
-	};
+	const env = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("PI_WORKTREE_")));
+	env.PI_WORKTREE_SESSION = "1";
+	env.PI_WORKTREE_NAME = session.name;
+	env.PI_WORKTREE_PATH = session.path;
+	env.PI_WORKTREE_BRANCH = session.branch;
+	env.PI_WORKTREE_REPO_ROOT = session.repoRoot;
+	env.PI_WORKTREE_ORIGINAL_CWD = originalCwd;
 
 	if (session.metadata) {
 		env.PI_WORKTREE_METADATA_JSON = JSON.stringify(session.metadata);
