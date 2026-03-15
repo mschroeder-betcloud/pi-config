@@ -11,6 +11,7 @@ function createDefaultOptions() {
 		command: "run",
 		name: null,
 		base: null,
+		target: null,
 		keepClean: false,
 		deleteClean: false,
 		keepDirty: false,
@@ -46,6 +47,10 @@ function parseRunArgs(args, options) {
 				break;
 			case "--base":
 				options.base = takeOptionValue(args, index, arg);
+				index += 1;
+				break;
+			case "--target":
+				options.target = takeOptionValue(args, index, arg);
 				index += 1;
 				break;
 			case "--keep-clean":
@@ -205,6 +210,7 @@ export function getHelpText() {
 		"",
 		"Run options:",
 		"  --base <branch>     Base branch or revision for new worktrees",
+		"  --target <branch>   Intended integration target on origin for new worktrees",
 		"  --keep-clean        Keep a clean worktree after pi exits",
 		"  --delete-clean      Delete a clean worktree after pi exits",
 		"  --keep-dirty        Keep a dirty worktree after pi exits",

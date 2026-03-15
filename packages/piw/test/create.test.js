@@ -1,17 +1,20 @@
 import assert from "node:assert/strict";
 import path from "node:path";
 import test from "node:test";
+import { readManagedWorktreeMetadata } from "../src/metadata.js";
 import {
 	assertBranchExists,
 	assertBranchMissing,
 	createTempRepo,
 	expectedWorktreePath,
 	listWorktreePaths,
+	parseCapturedWorktreeInfo,
+	readCapturedMetadata,
 	readJson,
 	runPiw,
 } from "./helpers.js";
 
-test("creates a named managed worktree and launches pi with worktree awareness", async () => {
+test("creates a named managed worktree, persists metadata, and launches pi with worktree awareness", async () => {
 	const repo = await createTempRepo();
 	const capturePath = path.join(repo.tempRoot, "capture", "named.json");
 
@@ -27,6 +30,9 @@ test("creates a named managed worktree and launches pi with worktree awareness",
 		assert.equal(result.code, 0);
 		const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
 		const capture = await readJson(capturePath);
+		const metadata = readCapturedMetadata(capture);
+		const worktreeInfo = parseCapturedWorktreeInfo(capture);
+		const persistedMetadata = await readManagedWorktreeMetadata(worktreePath);
 		const worktreePaths = await listWorktreePaths(repo.repoPath);
 
 		assert.equal(capture.cwd, worktreePath);
@@ -43,12 +49,35 @@ test("creates a named managed worktree and launches pi with worktree awareness",
 		);
 		assert.ok(worktreePaths.includes(worktreePath));
 		await assertBranchExists(repo.repoPath, "piw/feature-auth");
+
+		assert.ok(metadata, "expected PI_WORKTREE_METADATA_JSON to be provided");
+		assert.deepEqual(metadata, persistedMetadata);
+		assert.equal(metadata.kind, "piw");
+		assert.equal(metadata.name, "feature-auth");
+		assert.equal(metadata.branch, "piw/feature-auth");
+		assert.equal(metadata.repoRoot, repo.repoPath);
+		assert.equal(metadata.nameWasProvided, true);
+		assert.equal(metadata.base.input, "main");
+		assert.equal(metadata.base.resolvedRef, "refs/heads/main");
+		assert.match(metadata.base.commit, /^[0-9a-f]{40}$/);
+		assert.equal(metadata.integration.remote, "origin");
+		assert.equal(metadata.integration.branch, "main");
+		assert.equal(metadata.integration.targetCommitAtCreation, metadata.base.commit);
+		assert.equal(metadata.integration.createdFromTarget, true);
+
+		assert.ok(worktreeInfo);
+		assert.equal(worktreeInfo.kind, "piw");
+		assert.equal(worktreeInfo.managed, true);
+		assert.equal(worktreeInfo.metadataComplete, true);
+		assert.equal(worktreeInfo.nameWasProvided, true);
+		assert.equal(worktreeInfo.integration.branch, "main");
+		assert.equal(worktreeInfo.integration.createdFromTarget, true);
 	} finally {
 		await repo.cleanup();
 	}
 });
 
-test("creates an auto-named managed worktree when no name is provided and deletes it on clean exit", async () => {
+test("creates an auto-named managed worktree, marks it disposable, and deletes it on clean exit", async () => {
 	const repo = await createTempRepo();
 	const capturePath = path.join(repo.tempRoot, "capture", "auto.json");
 
@@ -63,6 +92,8 @@ test("creates an auto-named managed worktree when no name is provided and delete
 
 		assert.equal(result.code, 0);
 		const capture = await readJson(capturePath);
+		const metadata = readCapturedMetadata(capture);
+		const worktreeInfo = parseCapturedWorktreeInfo(capture);
 		const name = capture.env.PI_WORKTREE_NAME;
 		const worktreePath = expectedWorktreePath(repo.repoPath, name);
 		const worktreePaths = await listWorktreePaths(repo.repoPath);
@@ -72,6 +103,17 @@ test("creates an auto-named managed worktree when no name is provided and delete
 		assert.match(result.stdout, new RegExp(`Deleted worktree '${name}'\\.`));
 		assert.ok(!worktreePaths.includes(worktreePath));
 		await assertBranchMissing(repo.repoPath, `piw/${name}`);
+
+		assert.ok(metadata, "expected PI_WORKTREE_METADATA_JSON to be provided");
+		assert.equal(metadata.name, name);
+		assert.equal(metadata.nameWasProvided, false);
+		assert.equal(metadata.integration.remote, "origin");
+		assert.equal(metadata.integration.branch, "main");
+		assert.equal(metadata.integration.createdFromTarget, true);
+
+		assert.ok(worktreeInfo);
+		assert.equal(worktreeInfo.metadataComplete, true);
+		assert.equal(worktreeInfo.nameWasProvided, false);
 	} finally {
 		await repo.cleanup();
 	}

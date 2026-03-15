@@ -14,7 +14,8 @@ import {
 	removeManagedWorktree,
 } from "../src/git.js";
 import { launchPiSession } from "../src/launch.js";
-import { generateFriendlyName, normalizeName } from "../src/names.js";
+import { buildManagedWorktreeMetadata, readManagedWorktreeMetadata, writeManagedWorktreeMetadata } from "../src/metadata.js";
+import { generateFriendlyName, managedBranchName, normalizeName } from "../src/names.js";
 
 function printDebug(enabled, message, details) {
 	if (!enabled) return;
@@ -82,6 +83,23 @@ async function handleRemove(options) {
 	console.log(`  branch: ${removed.branch}`);
 }
 
+async function loadSessionMetadata(sessionPath) {
+	return await readManagedWorktreeMetadata(sessionPath);
+}
+
+async function persistNewWorktreeMetadata({ repoRoot, worktree, nameWasProvided, baseBranch, targetBranch }) {
+	const metadata = await buildManagedWorktreeMetadata({
+		repoRoot,
+		name: worktree.name,
+		branch: worktree.branch,
+		nameWasProvided,
+		baseInput: baseBranch,
+		targetBranch,
+	});
+	await writeManagedWorktreeMetadata(worktree.path, metadata);
+	return metadata;
+}
+
 async function handleRun(options) {
 	const originalCwd = process.cwd();
 	const repo = await getRepoContext(originalCwd);
@@ -92,6 +110,7 @@ async function handleRun(options) {
 	const existingNames = new Set(existingWorktrees.map((worktree) => worktree.name));
 	const nameWasProvided = Boolean(options.name);
 	const name = nameWasProvided ? normalizeName(options.name) : generateFriendlyName(existingNames);
+	const branch = managedBranchName(name);
 	const baseBranch = options.base || (await getCurrentBranch(repo.currentWorktreeRoot));
 
 	if (!baseBranch) {
@@ -99,7 +118,9 @@ async function handleRun(options) {
 	}
 
 	printDebug(options.debug, "selected worktree name", name);
+	printDebug(options.debug, "managed branch", branch);
 	printDebug(options.debug, "base branch", baseBranch);
+	printDebug(options.debug, "integration target", options.target ?? "(default)");
 
 	const { created, worktree } = await getOrCreateManagedWorktree({
 		repoRoot: repo.repoRoot,
@@ -107,11 +128,38 @@ async function handleRun(options) {
 		baseBranch,
 	});
 
+	let metadata = null;
+	if (created) {
+		try {
+			metadata = await persistNewWorktreeMetadata({
+				repoRoot: repo.repoRoot,
+				worktree,
+				nameWasProvided,
+				baseBranch,
+				targetBranch: options.target,
+			});
+		} catch (error) {
+			let cleanupError = null;
+			try {
+				await removeManagedWorktree({ repoRoot: repo.repoRoot, name });
+			} catch (cleanupFailure) {
+				cleanupError = cleanupFailure;
+			}
+
+			const cleanupSuffix = cleanupError instanceof Error ? `\nAdditionally failed to clean up the new worktree: ${cleanupError.message}` : "";
+			const message = error instanceof Error ? error.message : String(error);
+			throw new Error(`${message}${cleanupSuffix}`);
+		}
+	} else {
+		metadata = await loadSessionMetadata(worktree.path);
+	}
+
 	const session = {
 		...worktree,
 		repoRoot: repo.repoRoot,
 		originalCwd,
 		nameWasProvided,
+		metadata,
 	};
 
 	console.log(`${created ? "Created" : "Reusing"} worktree '${session.name}'.`);

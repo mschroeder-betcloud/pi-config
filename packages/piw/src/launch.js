@@ -43,6 +43,10 @@ export async function launchPiSession({ session, piArgs, piBin, originalCwd }) {
 		PI_WORKTREE_ORIGINAL_CWD: originalCwd,
 	};
 
+	if (session.metadata) {
+		env.PI_WORKTREE_METADATA_JSON = JSON.stringify(session.metadata);
+	}
+
 	return await new Promise((resolve, reject) => {
 		const child = spawn(resolvedPiBin, launchArgs, {
 			cwd: session.path,

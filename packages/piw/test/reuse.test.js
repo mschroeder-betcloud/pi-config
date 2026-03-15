@@ -7,10 +7,13 @@ import {
 	createTempRepo,
 	expectedWorktreePath,
 	listWorktreePaths,
+	parseCapturedWorktreeInfo,
+	readCapturedMetadata,
+	readJson,
 	runPiw,
 } from "./helpers.js";
 
-test("reuses an existing managed worktree and reports it in list/path commands", async () => {
+test("reuses an existing managed worktree, preserving metadata and reporting it in list/path commands", async () => {
 	const repo = await createTempRepo();
 	const firstCapture = path.join(repo.tempRoot, "capture", "first.json");
 	const secondCapture = path.join(repo.tempRoot, "capture", "second.json");
@@ -32,7 +35,14 @@ test("reuses an existing managed worktree and reports it in list/path commands",
 		assert.equal(secondRun.code, 0);
 		assert.match(secondRun.stdout, /Reusing worktree 'feature-auth'\./);
 
+		const firstMetadata = readCapturedMetadata(await readJson(firstCapture));
+		const secondCaptureJson = await readJson(secondCapture);
+		const secondMetadata = readCapturedMetadata(secondCaptureJson);
+		const secondWorktreeInfo = parseCapturedWorktreeInfo(secondCaptureJson);
 		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.deepEqual(secondMetadata, firstMetadata);
+		assert.equal(secondWorktreeInfo?.metadataComplete, true);
+		assert.equal(secondWorktreeInfo?.integration.branch, "main");
 		assert.equal(worktreePaths.filter((candidate) => candidate === worktreePath).length, 1);
 		await assertBranchExists(repo.repoPath, "piw/feature-auth");
 

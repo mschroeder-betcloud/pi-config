@@ -5,6 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
+import { buildWorktreeSessionFromEnv } from "../src/session-env.js";
 
 const execFileAsync = promisify(execFile);
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -28,7 +29,7 @@ export async function git(args, cwd, { allowFailure = false } = {}) {
 	}
 }
 
-export async function createTempRepo() {
+export async function createTempRepo({ withOrigin = true } = {}) {
 	const tempRoot = await mkdtemp(path.join(os.tmpdir(), "piw-"));
 	const repoPath = path.join(tempRoot, "repo");
 	await mkdir(repoPath, { recursive: true });
@@ -40,12 +41,22 @@ export async function createTempRepo() {
 	await git(["add", "README.md"], repoPath);
 	await git(["commit", "-m", "initial commit"], repoPath);
 
+	let originPath = null;
+	if (withOrigin) {
+		originPath = path.join(tempRoot, "origin.git");
+		await git(["init", "--bare", "--initial-branch=main", originPath], tempRoot);
+		await git(["remote", "add", "origin", originPath], repoPath);
+		await git(["push", "-u", "origin", "main"], repoPath);
+	}
+
 	const canonicalRepoPath = await realpath(repoPath);
 	const canonicalTempRoot = await realpath(tempRoot);
+	const canonicalOriginPath = originPath ? await realpath(originPath) : null;
 
 	return {
 		repoPath: canonicalRepoPath,
 		tempRoot: canonicalTempRoot,
+		originPath: canonicalOriginPath,
 		async cleanup() {
 			await rm(canonicalTempRoot, { recursive: true, force: true });
 		},
@@ -59,6 +70,15 @@ export function expectedWorktreePath(repoPath, name) {
 export async function readJson(jsonPath) {
 	const raw = await readFile(jsonPath, "utf8");
 	return JSON.parse(raw);
+}
+
+export function readCapturedMetadata(capture) {
+	const raw = capture?.env?.PI_WORKTREE_METADATA_JSON;
+	return raw ? JSON.parse(raw) : null;
+}
+
+export function parseCapturedWorktreeInfo(capture) {
+	return buildWorktreeSessionFromEnv(capture.env);
 }
 
 export async function runPiw({ cwd, args = [], env = {}, input = null } = {}) {
