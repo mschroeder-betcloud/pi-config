@@ -314,6 +314,20 @@ export async function isDirtyWorktree(worktreePath) {
 	return result.stdout.trim().length > 0;
 }
 
+export async function isHeadIntegratedInto(worktreePath, targetRevision) {
+	const result = await runGit(["merge-base", "--is-ancestor", "HEAD", targetRevision], worktreePath);
+	if (result.code === 0) {
+		return true;
+	}
+
+	if (result.code === 1) {
+		return false;
+	}
+
+	const details = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
+	throw new Error(details ? `Failed to compare HEAD against '${targetRevision}'.\n${details}` : `Failed to compare HEAD against '${targetRevision}'.`);
+}
+
 export async function removeManagedWorktree({ repoRoot, name }) {
 	let managed = await getManagedWorktree(repoRoot, name);
 	if (managed && !(await pathExists(managed.path))) {

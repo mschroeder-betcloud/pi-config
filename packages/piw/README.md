@@ -66,8 +66,8 @@ So the runtime worktree directories live **outside** the repo root.
 - `--target <branch>`: intended integration target on `origin` for new worktrees
 - `--keep-clean`: keep a clean worktree after `pi` exits
 - `--delete-clean`: delete a clean worktree after `pi` exits
-- `--keep-dirty`: keep a dirty worktree after `pi` exits
-- `--delete-dirty`: delete a dirty worktree after `pi` exits
+- `--keep-dirty`: keep a protected worktree after `pi` exits
+- `--delete-dirty`: delete a protected worktree after `pi` exits
 - `--yes`: skip confirmations needed by delete flags
 - `--pi-bin <path>`: override the `pi` executable, useful for testing
 - `--debug`: print extra wrapper diagnostics
@@ -76,7 +76,8 @@ So the runtime worktree directories live **outside** the repo root.
 
 - auto-generated worktrees created via `piw` are treated as disposable and are deleted on clean exit by default
 - explicitly named worktrees such as `piw feature-auth` are kept on clean exit by default
-- dirty worktrees still prompt whether to keep or delete unless you override that with flags
+- worktrees with uncommitted changes, commits not yet merged into their recorded target, or unknown integration state still prompt whether to keep or delete unless you override that with flags
+- if `piw` cannot verify the recorded target safely, it keeps the worktree by default in non-interactive mode
 
 ## Persisted metadata
 

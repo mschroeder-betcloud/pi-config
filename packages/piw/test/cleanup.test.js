@@ -1,11 +1,14 @@
 import assert from "node:assert/strict";
+import path from "node:path";
 import test from "node:test";
 import {
 	assertBranchExists,
 	assertBranchMissing,
 	createTempRepo,
 	expectedWorktreePath,
+	git,
 	listWorktreePaths,
+	readJson,
 	runPiw,
 } from "./helpers.js";
 
@@ -54,6 +57,107 @@ test("deletes a dirty managed worktree when the user chooses delete", async () =
 		const worktreePaths = await listWorktreePaths(repo.repoPath);
 		assert.ok(!worktreePaths.includes(worktreePath));
 		await assertBranchMissing(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("keeps an auto-generated worktree with unintegrated commits when no interactive prompt is available", async () => {
+	const repo = await createTempRepo();
+	const capturePath = path.join(repo.tempRoot, "capture", "auto-committed.json");
+
+	try {
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: [],
+			env: {
+				PIW_FAKE_PI_CAPTURE: capturePath,
+				PIW_FAKE_PI_COMMIT: "notes.txt",
+			},
+		});
+
+		assert.equal(result.code, 0);
+		const capture = await readJson(capturePath);
+		const name = capture.env.PI_WORKTREE_NAME;
+		const worktreePath = expectedWorktreePath(repo.repoPath, name);
+		assert.match(result.stdout, new RegExp(`Kept worktree '${name}' with commits not merged into 'origin/main'\\.`));
+		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.ok(worktreePaths.includes(worktreePath));
+		await assertBranchExists(repo.repoPath, `piw/${name}`);
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("delete-clean still prompts when a worktree has unintegrated commits", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth", "--delete-clean"],
+			env: {
+				PIW_FAKE_PI_COMMIT: "notes.txt",
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "k\n",
+		});
+
+		assert.equal(result.code, 0);
+		assert.match(result.stdout, /The worktree has commits not merged into 'origin\/main'\./);
+		assert.match(result.stdout, /Kept worktree 'feature-auth' with commits not merged into 'origin\/main'\./);
+		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.ok(worktreePaths.includes(worktreePath));
+		await assertBranchExists(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("deletes a worktree with unintegrated commits when the user chooses delete", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+			env: {
+				PIW_FAKE_PI_COMMIT: "notes.txt",
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "d\n",
+		});
+
+		assert.equal(result.code, 0);
+		assert.match(result.stdout, /The worktree has commits not merged into 'origin\/main'\./);
+		assert.match(result.stdout, /Deleted worktree 'feature-auth'\./);
+		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.ok(!worktreePaths.includes(worktreePath));
+		await assertBranchMissing(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("keeps a metadata-incomplete worktree when clean deletion safety cannot be verified", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "legacy");
+
+	try {
+		await git(["worktree", "add", "-b", "piw/legacy", worktreePath, "main"], repo.repoPath);
+
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["legacy", "--delete-clean"],
+		});
+
+		assert.equal(result.code, 0);
+		assert.match(result.stdout, /Kept protected worktree 'legacy'\./);
+		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.ok(worktreePaths.includes(worktreePath));
+		await assertBranchExists(repo.repoPath, "piw/legacy");
 	} finally {
 		await repo.cleanup();
 	}

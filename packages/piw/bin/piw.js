@@ -176,8 +176,12 @@ async function handleRun(options) {
 	const cleanup = await maybeCleanupRunWorktree(session, options);
 	if (cleanup.action === "deleted") {
 		console.log(`Deleted worktree '${session.name}'.`);
-	} else if (cleanup.dirty) {
+	} else if (cleanup.protection.kind === "dirty") {
 		console.log(`Kept dirty worktree '${session.name}'.`);
+	} else if (cleanup.protection.kind === "unintegrated") {
+		console.log(`Kept worktree '${session.name}' with commits not merged into '${cleanup.protection.integrationTarget.display}'.`);
+	} else if (cleanup.protection.kind === "unknown") {
+		console.log(`Kept protected worktree '${session.name}'.`);
 	}
 
 	process.exit(exitCode);

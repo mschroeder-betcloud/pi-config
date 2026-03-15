@@ -1,8 +1,58 @@
 import readline from "node:readline/promises";
-import { isDirtyWorktree, removeManagedWorktree } from "./git.js";
+import { isDirtyWorktree, isHeadIntegratedInto, removeManagedWorktree, revisionExists } from "./git.js";
 
 function canPrompt() {
 	return Boolean(process.stdin.isTTY) || process.env.PIW_ALLOW_NON_TTY_PROMPT === "1";
+}
+
+function trimToNull(value) {
+	if (typeof value !== "string") return null;
+	const trimmed = value.trim();
+	return trimmed ? trimmed : null;
+}
+
+function getIntegrationTarget(session) {
+	const remote = trimToNull(session.metadata?.integration?.remote);
+	const branch = trimToNull(session.metadata?.integration?.branch);
+	if (!remote || !branch) {
+		return null;
+	}
+
+	return {
+		remote,
+		branch,
+		ref: `refs/remotes/${remote}/${branch}`,
+		display: `${remote}/${branch}`,
+	};
+}
+
+async function inspectWorktreeProtection(session) {
+	const hasUncommittedChanges = await isDirtyWorktree(session.path);
+	const target = getIntegrationTarget(session);
+	let integrationStatus = "unknown";
+	let unknownReason = target ? "missing-target-ref" : "missing-target-metadata";
+
+	if (target && (await revisionExists(session.repoRoot, target.ref))) {
+		integrationStatus = (await isHeadIntegratedInto(session.path, target.ref)) ? "integrated" : "unintegrated";
+		unknownReason = null;
+	}
+
+	let kind = "clean";
+	if (hasUncommittedChanges) {
+		kind = "dirty";
+	} else if (integrationStatus === "unintegrated") {
+		kind = "unintegrated";
+	} else if (integrationStatus === "unknown") {
+		kind = "unknown";
+	}
+
+	return {
+		kind,
+		hasUncommittedChanges,
+		integrationStatus,
+		integrationTarget: target,
+		unknownReason,
+	};
 }
 
 async function askQuestion(prompt) {
@@ -19,9 +69,39 @@ async function askQuestion(prompt) {
 	}
 }
 
-export async function promptDirtyAction(session) {
+function printProtectionDetails(protection) {
+	if (protection.hasUncommittedChanges) {
+		console.log("The worktree has uncommitted changes.");
+	}
+
+	if (protection.integrationStatus === "unintegrated") {
+		console.log(`The worktree has commits not merged into '${protection.integrationTarget.display}'.`);
+	}
+
+	if (protection.integrationStatus === "unknown") {
+		if (protection.integrationTarget) {
+			console.log(`piw could not verify whether commits are merged into '${protection.integrationTarget.display}'.`);
+		} else {
+			console.log("piw could not verify whether commits are merged because the worktree integration target metadata is missing or incomplete.");
+		}
+	}
+}
+
+function getNonInteractiveKeepMessage(session, protection) {
+	if (protection.kind === "dirty") {
+		return `piw: keeping dirty worktree '${session.name}' (no interactive prompt available).`;
+	}
+
+	if (protection.kind === "unintegrated") {
+		return `piw: keeping worktree '${session.name}' because it has commits not merged into '${protection.integrationTarget.display}' (no interactive prompt available).`;
+	}
+
+	return `piw: keeping protected worktree '${session.name}' (no interactive prompt available).`;
+}
+
+export async function promptProtectedAction(session, protection) {
 	if (!canPrompt()) {
-		console.log(`piw: keeping dirty worktree '${session.name}' (no interactive prompt available).`);
+		console.log(getNonInteractiveKeepMessage(session, protection));
 		return "keep";
 	}
 
@@ -29,7 +109,7 @@ export async function promptDirtyAction(session) {
 	console.log(`This pi session was running in worktree '${session.name}'.`);
 	console.log(`Path: ${session.path}`);
 	console.log(`Branch: ${session.branch}`);
-	console.log("The worktree has uncommitted changes.");
+	printProtectionDetails(protection);
 	console.log("");
 	console.log("[k] Keep");
 	console.log("[d] Delete (remove worktree and managed branch)");
@@ -44,7 +124,7 @@ export async function promptDirtyAction(session) {
 	}
 }
 
-export async function promptRemovalConfirmation(session, { dirty }) {
+export async function promptRemovalConfirmation(session, protection = {}) {
 	if (!canPrompt()) {
 		throw new Error("Refusing to delete without confirmation in non-interactive mode. Use --yes to override.");
 	}
@@ -52,8 +132,18 @@ export async function promptRemovalConfirmation(session, { dirty }) {
 	console.log(`About to remove managed worktree '${session.name}'.`);
 	console.log(`Path: ${session.path}`);
 	console.log(`Branch: ${session.branch}`);
-	if (dirty) {
+	if (protection.hasUncommittedChanges || protection.dirty) {
 		console.log("State: dirty (uncommitted changes will be lost)");
+	}
+	if (protection.integrationStatus === "unintegrated") {
+		console.log(`State: has commits not merged into '${protection.integrationTarget.display}'`);
+	}
+	if (protection.integrationStatus === "unknown") {
+		if (protection.integrationTarget) {
+			console.log(`State: integration status unknown relative to '${protection.integrationTarget.display}'`);
+		} else {
+			console.log("State: integration status unknown (worktree metadata is missing or incomplete)");
+		}
 	}
 
 	while (true) {
@@ -65,37 +155,37 @@ export async function promptRemovalConfirmation(session, { dirty }) {
 }
 
 export async function maybeCleanupRunWorktree(session, options) {
-	const dirty = await isDirtyWorktree(session.path);
+	const protection = await inspectWorktreeProtection(session);
 
-	if (!dirty) {
+	if (protection.kind === "clean") {
 		const shouldDeleteClean = options.deleteClean || (!options.keepClean && !session.nameWasProvided);
 		if (shouldDeleteClean) {
 			await removeManagedWorktree({ repoRoot: session.repoRoot, name: session.name });
-			return { dirty: false, action: "deleted" };
+			return { protection, action: "deleted" };
 		}
-		return { dirty: false, action: "kept" };
+		return { protection, action: "kept" };
 	}
 
 	if (options.keepDirty) {
-		return { dirty: true, action: "kept" };
+		return { protection, action: "kept" };
 	}
 
 	if (options.deleteDirty) {
 		if (!options.yes) {
-			const confirmed = await promptRemovalConfirmation(session, { dirty: true });
+			const confirmed = await promptRemovalConfirmation(session, protection);
 			if (!confirmed) {
-				return { dirty: true, action: "kept" };
+				return { protection, action: "kept" };
 			}
 		}
 		await removeManagedWorktree({ repoRoot: session.repoRoot, name: session.name });
-		return { dirty: true, action: "deleted" };
+		return { protection, action: "deleted" };
 	}
 
-	const action = await promptDirtyAction(session);
+	const action = await promptProtectedAction(session, protection);
 	if (action === "delete") {
 		await removeManagedWorktree({ repoRoot: session.repoRoot, name: session.name });
-		return { dirty: true, action: "deleted" };
+		return { protection, action: "deleted" };
 	}
 
-	return { dirty: true, action: action === "cancel" ? "cancelled" : "kept" };
+	return { protection, action: action === "cancel" ? "cancelled" : "kept" };
 }
