@@ -78,6 +78,51 @@ async function resolveLocalBranchRef(repoRoot, branchName) {
 	return commit ? ref : null;
 }
 
+function getRemoteBranchRef(branchName, remote = DEFAULT_REMOTE) {
+	return `refs/remotes/${remote}/${branchName}`;
+}
+
+async function resolveRemoteBranchRef(repoRoot, branchName, remote = DEFAULT_REMOTE) {
+	if (!trimToNull(branchName)) {
+		return null;
+	}
+
+	const ref = getRemoteBranchRef(branchName, remote);
+	const commit = await resolveCommit(repoRoot, ref);
+	return commit ? ref : null;
+}
+
+function normalizeRemoteTrackingBranchInput(input, remote = DEFAULT_REMOTE) {
+	const value = trimToNull(input);
+	if (!value) {
+		return null;
+	}
+
+	if (value.startsWith(`refs/remotes/${remote}/`)) {
+		return value.slice(`refs/remotes/${remote}/`.length);
+	}
+
+	if (value.startsWith(`${remote}/`)) {
+		return value.slice(`${remote}/`.length);
+	}
+
+	return null;
+}
+
+async function resolveBaseRef(repoRoot, baseInput) {
+	const localRef = await resolveLocalBranchRef(repoRoot, baseInput);
+	if (localRef) {
+		return localRef;
+	}
+
+	const remoteBranch = normalizeRemoteTrackingBranchInput(baseInput);
+	if (!remoteBranch) {
+		return null;
+	}
+
+	return await resolveRemoteBranchRef(repoRoot, remoteBranch);
+}
+
 function normalizeTargetBranchName(input) {
 	const value = trimToNull(input);
 	if (!value) {
@@ -106,7 +151,7 @@ async function deriveIntegrationTarget(repoRoot, baseInput, explicitTargetBranch
 			throw new Error("Integration target branch cannot be empty.");
 		}
 
-		const targetCommit = await resolveCommit(repoRoot, `refs/remotes/${DEFAULT_REMOTE}/${branch}`);
+		const targetCommit = await resolveCommit(repoRoot, getRemoteBranchRef(branch));
 		if (!targetCommit) {
 			throw new Error(`Target branch '${branch}' does not exist on remote '${DEFAULT_REMOTE}'.`);
 		}
@@ -119,7 +164,26 @@ async function deriveIntegrationTarget(repoRoot, baseInput, explicitTargetBranch
 	}
 
 	const baseBranchRef = await resolveLocalBranchRef(repoRoot, baseInput);
-	if (!baseBranchRef) {
+	if (baseBranchRef) {
+		const branch = baseBranchRef.slice("refs/heads/".length);
+		const targetCommit = await resolveCommit(repoRoot, getRemoteBranchRef(branch));
+		if (!targetCommit) {
+			return {
+				remote: DEFAULT_REMOTE,
+				branch: null,
+				targetCommitAtCreation: null,
+			};
+		}
+
+		return {
+			remote: DEFAULT_REMOTE,
+			branch,
+			targetCommitAtCreation: targetCommit,
+		};
+	}
+
+	const remoteBranch = normalizeRemoteTrackingBranchInput(baseInput);
+	if (!remoteBranch) {
 		return {
 			remote: DEFAULT_REMOTE,
 			branch: null,
@@ -127,8 +191,7 @@ async function deriveIntegrationTarget(repoRoot, baseInput, explicitTargetBranch
 		};
 	}
 
-	const branch = baseBranchRef.slice("refs/heads/".length);
-	const targetCommit = await resolveCommit(repoRoot, `refs/remotes/${DEFAULT_REMOTE}/${branch}`);
+	const targetCommit = await resolveCommit(repoRoot, getRemoteBranchRef(remoteBranch));
 	if (!targetCommit) {
 		return {
 			remote: DEFAULT_REMOTE,
@@ -139,7 +202,7 @@ async function deriveIntegrationTarget(repoRoot, baseInput, explicitTargetBranch
 
 	return {
 		remote: DEFAULT_REMOTE,
-		branch,
+		branch: remoteBranch,
 		targetCommitAtCreation: targetCommit,
 	};
 }
@@ -170,6 +233,34 @@ export async function getManagedWorktreeMetadataPath(worktreePath) {
 	return resolveMetadataPathOutput(worktreePath, result.stdout);
 }
 
+export async function planManagedWorktreeCreation({ repoRoot, baseInput, targetBranch = null, baseWasProvided = false }) {
+	const requestedBaseInput = trimToNull(baseInput);
+	if (!requestedBaseInput) {
+		throw new Error("Base branch or revision cannot be empty.");
+	}
+
+	const requestedBaseCommit = await resolveCommit(repoRoot, requestedBaseInput);
+	if (!requestedBaseCommit) {
+		throw new Error(`Base branch or revision '${requestedBaseInput}' does not exist.`);
+	}
+
+	const integration = await deriveIntegrationTarget(repoRoot, requestedBaseInput, targetBranch);
+	let effectiveBaseInput = requestedBaseInput;
+	let switchedToTargetBase = false;
+
+	if (!baseWasProvided && integration.branch && integration.targetCommitAtCreation && integration.targetCommitAtCreation !== requestedBaseCommit) {
+		effectiveBaseInput = `${integration.remote}/${integration.branch}`;
+		switchedToTargetBase = effectiveBaseInput !== requestedBaseInput;
+	}
+
+	return {
+		requestedBaseInput,
+		effectiveBaseInput,
+		switchedToTargetBase,
+		integration,
+	};
+}
+
 export async function buildManagedWorktreeMetadata({ repoRoot, name, branch, nameWasProvided, baseInput, targetBranch = null }) {
 	const normalizedBaseInput = trimToNull(baseInput);
 	if (!normalizedBaseInput) {
@@ -181,7 +272,7 @@ export async function buildManagedWorktreeMetadata({ repoRoot, name, branch, nam
 		throw new Error(`Base branch or revision '${normalizedBaseInput}' does not exist.`);
 	}
 
-	const resolvedRef = await resolveLocalBranchRef(repoRoot, normalizedBaseInput);
+	const resolvedRef = await resolveBaseRef(repoRoot, normalizedBaseInput);
 	const integration = await deriveIntegrationTarget(repoRoot, normalizedBaseInput, targetBranch);
 
 	return {

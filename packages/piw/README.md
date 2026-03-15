@@ -97,6 +97,8 @@ This metadata is used to make automation safer. For example, a skill can refuse 
 
 - If you pass `--target <branch>`, `piw` records that branch as the intended integration target on `origin`.
 - If you omit `--target`, `piw` tries to infer a target only when the base is a local branch and `origin/<branch>` exists.
+- When `--base` is omitted and `piw` can determine a target safely, new worktrees prefer the recorded target tip over a diverged local branch tip. For example, if local `main` is ahead of `origin/main`, `piw` creates the worktree from `origin/main` by default so `integration.createdFromTarget` remains true.
+- Passing `--base` keeps the requested base exactly as provided, even if it differs from the recorded target tip.
 - If no safe target can be derived, the worktree still works normally, but metadata-backed integration workflows should treat it as incomplete.
 - Existing older worktrees that predate metadata remain reusable, but they are intentionally treated as metadata-incomplete.
 

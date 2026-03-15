@@ -14,7 +14,7 @@ import {
 	runPiw,
 } from "./helpers.js";
 
-test("records complete metadata even when the base no longer matches the integration target", async () => {
+test("defaults a new worktree to the recorded target tip when the local base has diverged", async () => {
 	const repo = await createTempRepo();
 	const capturePath = path.join(repo.tempRoot, "capture", "out-of-date-target.json");
 
@@ -33,7 +33,77 @@ test("records complete metadata even when the base no longer matches the integra
 		const worktreeInfo = parseCapturedWorktreeInfo(capture);
 
 		assert.ok(metadata);
+		assert.equal(metadata.base.input, "origin/main");
+		assert.equal(metadata.base.resolvedRef, "refs/remotes/origin/main");
+		assert.equal(metadata.integration.remote, "origin");
+		assert.equal(metadata.integration.branch, "main");
+		assert.equal(metadata.integration.targetCommitAtCreation, metadata.base.commit);
+		assert.equal(metadata.integration.createdFromTarget, true);
+
+		assert.ok(worktreeInfo);
+		assert.equal(worktreeInfo.metadataComplete, true);
+		assert.equal(worktreeInfo.integration.createdFromTarget, true);
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("infers the recorded target from a remote-tracking creation base", async () => {
+	const repo = await createTempRepo();
+	const capturePath = path.join(repo.tempRoot, "capture", "implicit-target.json");
+
+	try {
+		await git(["commit", "--allow-empty", "-m", "local change"], repo.repoPath);
+
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+			env: { PIW_FAKE_PI_CAPTURE: capturePath },
+		});
+		assert.equal(result.code, 0);
+
+		const capture = await readJson(capturePath);
+		const metadata = readCapturedMetadata(capture);
+		const worktreeInfo = parseCapturedWorktreeInfo(capture);
+
+		assert.ok(metadata);
+		assert.equal(metadata.base.input, "origin/main");
+		assert.equal(metadata.base.resolvedRef, "refs/remotes/origin/main");
+		assert.equal(metadata.integration.remote, "origin");
+		assert.equal(metadata.integration.branch, "main");
+		assert.equal(metadata.integration.targetCommitAtCreation, metadata.base.commit);
+		assert.equal(metadata.integration.createdFromTarget, true);
+
+		assert.ok(worktreeInfo);
+		assert.equal(worktreeInfo.metadataComplete, true);
+		assert.equal(worktreeInfo.integration.branch, "main");
+		assert.equal(worktreeInfo.integration.createdFromTarget, true);
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("keeps an explicit base even when the recorded target tip differs", async () => {
+	const repo = await createTempRepo();
+	const capturePath = path.join(repo.tempRoot, "capture", "explicit-base.json");
+
+	try {
+		await git(["commit", "--allow-empty", "-m", "local change"], repo.repoPath);
+
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth", "--base", "main", "--target", "main"],
+			env: { PIW_FAKE_PI_CAPTURE: capturePath },
+		});
+		assert.equal(result.code, 0);
+
+		const capture = await readJson(capturePath);
+		const metadata = readCapturedMetadata(capture);
+		const worktreeInfo = parseCapturedWorktreeInfo(capture);
+
+		assert.ok(metadata);
 		assert.equal(metadata.base.input, "main");
+		assert.equal(metadata.base.resolvedRef, "refs/heads/main");
 		assert.equal(metadata.integration.remote, "origin");
 		assert.equal(metadata.integration.branch, "main");
 		assert.notEqual(metadata.integration.targetCommitAtCreation, metadata.base.commit);

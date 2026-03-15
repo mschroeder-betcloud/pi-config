@@ -14,7 +14,7 @@ import {
 	removeManagedWorktree,
 } from "../src/git.js";
 import { launchPiSession } from "../src/launch.js";
-import { buildManagedWorktreeMetadata, readManagedWorktreeMetadata, writeManagedWorktreeMetadata } from "../src/metadata.js";
+import { buildManagedWorktreeMetadata, planManagedWorktreeCreation, readManagedWorktreeMetadata, writeManagedWorktreeMetadata } from "../src/metadata.js";
 import { generateFriendlyName, managedBranchName, normalizeName } from "../src/names.js";
 
 function printDebug(enabled, message, details) {
@@ -87,13 +87,13 @@ async function loadSessionMetadata(sessionPath) {
 	return await readManagedWorktreeMetadata(sessionPath);
 }
 
-async function persistNewWorktreeMetadata({ repoRoot, worktree, nameWasProvided, baseBranch, targetBranch }) {
+async function persistNewWorktreeMetadata({ repoRoot, worktree, nameWasProvided, baseInput, targetBranch }) {
 	const metadata = await buildManagedWorktreeMetadata({
 		repoRoot,
 		name: worktree.name,
 		branch: worktree.branch,
 		nameWasProvided,
-		baseInput: baseBranch,
+		baseInput,
 		targetBranch,
 	});
 	await writeManagedWorktreeMetadata(worktree.path, metadata);
@@ -111,31 +111,48 @@ async function handleRun(options) {
 	const nameWasProvided = Boolean(options.name);
 	const name = nameWasProvided ? normalizeName(options.name) : generateFriendlyName(existingNames);
 	const branch = managedBranchName(name);
-	const baseBranch = options.base || (await getCurrentBranch(repo.currentWorktreeRoot));
+	const reusableWorktree = existingWorktrees.find((worktree) => worktree.name === name && worktree.exists);
+	let creationPlan = null;
 
-	if (!baseBranch) {
-		throw new Error("Unable to determine a base branch from a detached HEAD. Re-run with --base <branch>.");
+	if (!reusableWorktree) {
+		const requestedBaseInput = options.base || (await getCurrentBranch(repo.currentWorktreeRoot));
+		if (!requestedBaseInput) {
+			throw new Error("Unable to determine a base branch from a detached HEAD. Re-run with --base <branch>.");
+		}
+
+		creationPlan = await planManagedWorktreeCreation({
+			repoRoot: repo.repoRoot,
+			baseInput: requestedBaseInput,
+			targetBranch: options.target,
+			baseWasProvided: Boolean(options.base),
+		});
 	}
 
 	printDebug(options.debug, "selected worktree name", name);
 	printDebug(options.debug, "managed branch", branch);
-	printDebug(options.debug, "base branch", baseBranch);
-	printDebug(options.debug, "integration target", options.target ?? "(default)");
+	printDebug(options.debug, "requested base", creationPlan?.requestedBaseInput ?? "(reuse existing worktree)");
+	printDebug(options.debug, "effective base", creationPlan?.effectiveBaseInput ?? "(reuse existing worktree)");
+	printDebug(options.debug, "integration target", creationPlan?.integration.branch ? `${creationPlan.integration.remote}/${creationPlan.integration.branch}` : "(default or existing metadata)");
+	printDebug(options.debug, "switched to target base", creationPlan?.switchedToTargetBase ?? false);
 
 	const { created, worktree } = await getOrCreateManagedWorktree({
 		repoRoot: repo.repoRoot,
 		name,
-		baseBranch,
+		baseBranch: creationPlan?.effectiveBaseInput ?? branch,
 	});
 
 	let metadata = null;
 	if (created) {
+		if (!creationPlan) {
+			throw new Error("Failed to determine creation metadata for the new worktree.");
+		}
+
 		try {
 			metadata = await persistNewWorktreeMetadata({
 				repoRoot: repo.repoRoot,
 				worktree,
 				nameWasProvided,
-				baseBranch,
+				baseInput: creationPlan.effectiveBaseInput,
 				targetBranch: options.target,
 			});
 		} catch (error) {

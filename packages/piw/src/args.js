@@ -222,6 +222,7 @@ export function getHelpText() {
 		"Notes:",
 		"  - Clean auto-generated worktrees are deleted by default; clean named worktrees are kept.",
 		"  - Worktrees with uncommitted changes, unintegrated commits, or unknown integration state use the protected-worktree flow.",
+		"  - When --base is omitted, piw may create from origin/<target> instead of a diverged local branch.",
 		"  - Managed branches use the prefix 'piw/'.",
 		"  - Managed worktrees are stored beside the repo in '<repo>.worktrees/<name>'.",
 		"  - Extra pi arguments must come after '--'.",

@@ -65,6 +65,32 @@ test("reuses an existing managed worktree, preserving metadata and reporting it 
 	}
 });
 
+test("reuses an existing managed worktree even when a new target flag would be invalid", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const createResult = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+		});
+		assert.equal(createResult.code, 0);
+
+		const reuseResult = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth", "--target", "develop"],
+		});
+		assert.equal(reuseResult.code, 0);
+		assert.match(reuseResult.stdout, /Reusing worktree 'feature-auth'\./);
+
+		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.ok(worktreePaths.includes(worktreePath));
+		await assertBranchExists(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
 test("rm removes a managed worktree and its managed branch", async () => {
 	const repo = await createTempRepo();
 	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
