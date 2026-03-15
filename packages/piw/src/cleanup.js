@@ -153,14 +153,12 @@ export async function promptProtectedAction(session, protection) {
 	console.log("");
 	console.log("[k] Keep");
 	console.log("[d] Delete (remove worktree and managed branch)");
-	console.log("[c] Cancel");
 
 	while (true) {
-		const answer = (await askQuestion("Choose [k/d/c] (default: k): ")).toLowerCase();
+		const answer = (await askQuestion("Choose [k/d] (default: k): ")).toLowerCase();
 		if (!answer || answer === "k" || answer === "keep") return "keep";
 		if (answer === "d" || answer === "delete") return "delete";
-		if (answer === "c" || answer === "cancel") return "cancel";
-		console.log("Please enter 'k', 'd', or 'c'.");
+		console.log("Please enter 'k' or 'd'.");
 	}
 }
 
@@ -227,5 +225,5 @@ export async function maybeCleanupRunWorktree(session, options) {
 		return { protection, action: "deleted" };
 	}
 
-	return { protection, action: action === "cancel" ? "cancelled" : "kept" };
+	return { protection, action: "kept" };
 }

@@ -62,6 +62,34 @@ test("deletes a dirty managed worktree when the user chooses delete", async () =
 	}
 });
 
+test("protected cleanup prompt no longer offers cancel", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+			env: {
+				PIW_FAKE_PI_TOUCH: "notes.txt",
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "c\nk\n",
+		});
+
+		assert.equal(result.code, 0);
+		assert.doesNotMatch(result.stdout, /\[c\] Cancel/);
+		assert.doesNotMatch(result.stdout, /Choose \[k\/d\/c\]/);
+		assert.match(result.stdout, /Choose \[k\/d\] \(default: k\):/);
+		assert.match(result.stdout, /Please enter 'k' or 'd'\./);
+		const worktreePaths = await listWorktreePaths(repo.repoPath);
+		assert.ok(worktreePaths.includes(worktreePath));
+		await assertBranchExists(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
 test("keeps an auto-generated worktree with unintegrated commits when no interactive prompt is available", async () => {
 	const repo = await createTempRepo();
 	const capturePath = path.join(repo.tempRoot, "capture", "auto-committed.json");
