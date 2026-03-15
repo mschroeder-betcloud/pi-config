@@ -11,6 +11,7 @@ import {
 	getRepoContext,
 	isDirtyWorktree,
 	listManagedWorktrees,
+	renameManagedWorktree,
 	removeManagedWorktree,
 } from "../src/git.js";
 import { launchPiSession } from "../src/launch.js";
@@ -81,6 +82,21 @@ async function handleRemove(options) {
 	console.log(`Removed worktree '${removed.name}'.`);
 	console.log(`  path: ${removed.path}`);
 	console.log(`  branch: ${removed.branch}`);
+}
+
+async function handleRename(options) {
+	const repo = await getRepoContext(process.cwd());
+	const oldName = normalizeName(options.oldName);
+	const newName = normalizeName(options.newName);
+	const renamed = await renameManagedWorktree({
+		repoRoot: repo.repoRoot,
+		oldName,
+		newName,
+		currentWorktreeRoot: repo.currentWorktreeRoot,
+	});
+	console.log(`Renamed worktree '${oldName}' to '${renamed.name}'.`);
+	console.log(`  path: ${renamed.path}`);
+	console.log(`  branch: ${renamed.branch}`);
 }
 
 async function loadSessionMetadata(sessionPath) {
@@ -220,6 +236,9 @@ async function main() {
 			return;
 		case "rm":
 			await handleRemove(options);
+			return;
+		case "rename":
+			await handleRename(options);
 			return;
 		default:
 			await handleRun(options);

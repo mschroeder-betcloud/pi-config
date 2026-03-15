@@ -40,6 +40,7 @@ piw [name] [options] [-- <pi args...>]
 piw list
 piw path <name>
 piw rm <name>
+piw rename <old-name> <new-name>
 ```
 
 ## Naming and storage
@@ -48,6 +49,9 @@ Managed worktrees use:
 
 - branch: `piw/<name>`
 - path: `<repo-parent>/<repo-name>.worktrees/<name>`
+
+So `piw rename <old-name> <new-name>` updates the managed branch, managed path, and persisted metadata together.
+Renaming the currently active worktree from inside itself is intentionally not supported.
 
 Example for this repo:
 

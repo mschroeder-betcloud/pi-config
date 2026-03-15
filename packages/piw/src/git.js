@@ -2,7 +2,8 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { getManagedNameFromBranch, isManagedBranchName, managedBranchName } from "./names.js";
+import { readManagedWorktreeMetadata, writeManagedWorktreeMetadata } from "./metadata.js";
+import { getManagedNameFromBranch, isManagedBranchName, managedBranchName, normalizeName } from "./names.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -326,6 +327,117 @@ export async function isHeadIntegratedInto(worktreePath, targetRevision) {
 
 	const details = [result.stderr.trim(), result.stdout.trim()].filter(Boolean).join("\n");
 	throw new Error(details ? `Failed to compare HEAD against '${targetRevision}'.\n${details}` : `Failed to compare HEAD against '${targetRevision}'.`);
+}
+
+export async function renameManagedWorktree({ repoRoot, oldName, newName, currentWorktreeRoot = null }) {
+	const sourceName = normalizeName(oldName);
+	const targetName = normalizeName(newName);
+	if (sourceName === targetName) {
+		throw new Error(`Worktree '${sourceName}' already has that name.`);
+	}
+
+	let managed = await getManagedWorktree(repoRoot, sourceName);
+	if (managed && !(await pathExists(managed.path))) {
+		await pruneWorktrees(repoRoot);
+		managed = await getManagedWorktree(repoRoot, sourceName);
+	}
+
+	if (!managed) {
+		throw new Error(`No managed worktree named '${sourceName}' was found for this repository.`);
+	}
+
+	if (currentWorktreeRoot && samePath(currentWorktreeRoot, managed.path)) {
+		throw new Error(`Refusing to rename the active worktree '${sourceName}' from inside itself.`);
+	}
+
+	if (!(await pathExists(managed.path))) {
+		throw new Error(`Managed worktree '${sourceName}' is registered but its path '${managed.path}' is missing.`);
+	}
+
+	let target = await getManagedWorktree(repoRoot, targetName);
+	if (target && !(await pathExists(target.path))) {
+		await pruneWorktrees(repoRoot);
+		target = await getManagedWorktree(repoRoot, targetName);
+	}
+
+	if (target) {
+		throw new Error(`A managed worktree named '${targetName}' already exists.`);
+	}
+
+	const targetBranch = managedBranchName(targetName);
+	if (await branchExists(repoRoot, targetBranch)) {
+		throw new Error(`Managed branch '${targetBranch}' already exists.`);
+	}
+
+	const targetPath = getManagedWorktreePath(repoRoot, targetName);
+	if (await pathExists(targetPath)) {
+		throw new Error(`Target worktree path '${targetPath}' already exists.`);
+	}
+
+	const metadata = await readManagedWorktreeMetadata(managed.path);
+	if (metadata !== null && (typeof metadata !== "object" || Array.isArray(metadata))) {
+		throw new Error(`Expected piw metadata for worktree '${sourceName}' to be a JSON object.`);
+	}
+
+	await fs.mkdir(path.dirname(targetPath), { recursive: true });
+
+	let branchRenamed = false;
+	let moved = false;
+	try {
+		await runGitChecked(["branch", "-m", managed.branch, targetBranch], repoRoot, `Failed to rename managed branch '${managed.branch}' to '${targetBranch}'.`);
+		branchRenamed = true;
+
+		await runGitChecked(["worktree", "move", managed.path, targetPath], repoRoot, `Failed to move worktree '${sourceName}' to '${targetPath}'.`);
+		moved = true;
+
+		if (metadata !== null) {
+			await writeManagedWorktreeMetadata(targetPath, {
+				...metadata,
+				name: targetName,
+				branch: targetBranch,
+			});
+		}
+
+		const renamed = await getManagedWorktree(repoRoot, targetName);
+		if (!renamed) {
+			throw new Error(`Worktree '${sourceName}' was renamed, but could not be rediscovered afterward.`);
+		}
+
+		return renamed;
+	} catch (error) {
+		const rollbackErrors = [];
+
+		if (moved) {
+			try {
+				await runGitChecked(["worktree", "move", targetPath, managed.path], repoRoot, `Failed to move worktree '${targetName}' back to '${managed.path}'.`);
+			} catch (rollbackError) {
+				rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
+			}
+		}
+
+		if (branchRenamed) {
+			try {
+				await runGitChecked(["branch", "-m", targetBranch, managed.branch], repoRoot, `Failed to rename managed branch '${targetBranch}' back to '${managed.branch}'.`);
+			} catch (rollbackError) {
+				rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
+			}
+		}
+
+		if (metadata !== null) {
+			try {
+				await writeManagedWorktreeMetadata(managed.path, metadata);
+			} catch (rollbackError) {
+				rollbackErrors.push(rollbackError instanceof Error ? rollbackError.message : String(rollbackError));
+			}
+		}
+
+		const message = error instanceof Error ? error.message : String(error);
+		if (rollbackErrors.length > 0) {
+			throw new Error(`${message}\nAdditionally failed to roll back the rename:\n- ${rollbackErrors.join("\n- ")}`);
+		}
+
+		throw error;
+	}
 }
 
 export async function removeManagedWorktree({ repoRoot, name }) {

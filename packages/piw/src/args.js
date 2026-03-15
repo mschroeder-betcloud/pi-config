@@ -10,6 +10,8 @@ function createDefaultOptions() {
 	return {
 		command: "run",
 		name: null,
+		oldName: null,
+		newName: null,
 		base: null,
 		target: null,
 		keepClean: false,
@@ -173,6 +175,36 @@ function parseRemoveArgs(args, options) {
 	options.name = positionals[0] ?? null;
 }
 
+function parseRenameArgs(args, options) {
+	options.command = "rename";
+	const positionals = [];
+
+	for (let index = 0; index < args.length; index += 1) {
+		const arg = args[index];
+		switch (arg) {
+			case "--help":
+			case "-h":
+				options.help = true;
+				break;
+			case "--debug":
+				options.debug = true;
+				break;
+			default:
+				if (arg.startsWith("--")) {
+					throw new Error(`Unknown rename argument: ${arg}`);
+				}
+				positionals.push(arg);
+		}
+	}
+
+	if (positionals.length !== 2 && !options.help) {
+		throw new Error("The rename command requires exactly two worktree names.");
+	}
+
+	options.oldName = positionals[0] ?? null;
+	options.newName = positionals[1] ?? null;
+}
+
 export function parseArgs(argv) {
 	const options = createDefaultOptions();
 	const separatorIndex = argv.indexOf("--");
@@ -194,6 +226,11 @@ export function parseArgs(argv) {
 		return options;
 	}
 
+	if (mainArgs[0] === "rename") {
+		parseRenameArgs(mainArgs.slice(1), options);
+		return options;
+	}
+
 	parseRunArgs(mainArgs, options);
 	return options;
 }
@@ -207,6 +244,7 @@ export function getHelpText() {
 		"  piw list [--json]",
 		"  piw path <name>",
 		"  piw rm <name> [--yes]",
+		"  piw rename <old-name> <new-name>",
 		"",
 		"Run options:",
 		"  --base <branch>     Base branch or revision for new worktrees",
