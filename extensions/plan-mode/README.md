@@ -37,8 +37,8 @@ Plan:
 3. Third step description
 ```
 
-4. If you want tracked tasks for that plan, explicitly enable them with `/todos on`
-5. Choose **Execute the plan** when prompted
+4. If you want tracked tasks for that plan, either enable them with `/todos on` or choose **Execute the plan with task tracking** when prompted
+5. Choose **Execute the plan** when prompted for normal execution, or **Execute the plan with task tracking** for tracked execution
 6. Only when task tracking is enabled:
    - the plan steps are captured into a tracked todo list
    - execution uses the `plan_step_done` tool to mark tracked steps complete

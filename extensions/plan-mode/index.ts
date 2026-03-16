@@ -228,6 +228,28 @@ export default function planModeExtension(pi: ExtensionAPI): void {
 			.join("\n");
 	}
 
+	function sendTodoListMessage(items: TodoItem[]): void {
+		pi.sendMessage(
+			{
+				customType: PLAN_TODO_LIST_MESSAGE_TYPE,
+				content: `**Plan Steps (${items.length}):**\n\n${formatTodoChecklist(items)}`,
+				display: true,
+			},
+			{ triggerTurn: false },
+		);
+	}
+
+	function getExecutionStartMessage(): string {
+		const intro =
+			todoItems.length > 0
+				? `Execute the full plan from start to finish. Start with step 1: ${todoItems[0].text}`
+				: "Execute the full plan from start to finish.";
+		if (executionMode && hasTrackedTodoItems()) {
+			return `${intro} Do not pause for confirmation between tracked steps unless you need clarification or hit an error. Mark each completed tracked step with ${PLAN_STEP_DONE_TOOL} immediately.`;
+		}
+		return `${intro} Do not pause for confirmation between steps unless you need clarification or hit an error.`;
+	}
+
 	function parseTodosCommand(args: string | undefined): "show" | "on" | "off" | null {
 		const normalized = (args ?? "").trim().toLowerCase();
 		if (!normalized || normalized === "show" || normalized === "list" || normalized === "status") return "show";
@@ -794,6 +816,8 @@ Remaining steps:
 ${todoList}
 
 Execute each step in order.
+Continue through the remaining tracked steps automatically.
+Do not stop after step 1 or ask for confirmation between tracked steps unless you need clarification or hit an error.
 When you finish a tracked step, call ${PLAN_STEP_DONE_TOOL} immediately with the completed step number.
 If you complete multiple tracked steps together, you may mark them in one call.
 Do not rely on prose-only progress updates.`,
@@ -840,40 +864,46 @@ Do not rely on prose-only progress updates.`,
 
 		if (!planModeEnabled || !ctx.hasUI) return;
 
-		if (todoTrackingEnabled) {
-			const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
-			if (lastAssistant) {
-				const extracted = extractTodoItems(getTextContent(lastAssistant));
-				if (extracted.length > 0) {
-					todoItems = extracted;
-					persistState();
-				}
-			}
+		const lastAssistant = [...event.messages].reverse().find(isAssistantMessage);
+		const latestPlanItems = lastAssistant ? extractTodoItems(getTextContent(lastAssistant)) : [];
+
+		if (todoTrackingEnabled && latestPlanItems.length > 0) {
+			todoItems = latestPlanItems;
+			persistState();
 		}
 
 		if (todoTrackingEnabled && todoItems.length > 0) {
-			pi.sendMessage(
-				{
-					customType: PLAN_TODO_LIST_MESSAGE_TYPE,
-					content: `**Plan Steps (${todoItems.length}):**\n\n${formatTodoChecklist(todoItems)}`,
-					display: true,
-				},
-				{ triggerTurn: false },
-			);
+			sendTodoListMessage(todoItems);
 		}
 
-		const choice = await ctx.ui.select("Plan mode - what next?", [
-			todoTrackingEnabled && todoItems.length > 0 ? "Execute the plan (track progress)" : "Execute the plan",
-			"Stay in plan mode",
-			"Refine the plan",
-		]);
+		const hasTrackablePlan = latestPlanItems.length > 0 || todoItems.length > 0;
+		const choices = [todoTrackingEnabled && todoItems.length > 0 ? "Execute the plan (track progress)" : "Execute the plan"];
+		if (!todoTrackingEnabled && hasTrackablePlan) {
+			choices.push("Execute the plan with task tracking");
+		}
+		choices.push("Stay in plan mode", "Refine the plan");
+
+		const choice = await ctx.ui.select("Plan mode - what next?", choices);
+
+		if (choice === "Execute the plan with task tracking") {
+			const trackedPlanItems = latestPlanItems.length > 0 ? latestPlanItems : todoItems;
+			if (trackedPlanItems.length > 0) {
+				todoTrackingEnabled = true;
+				todoItems = trackedPlanItems;
+				sendTodoListMessage(todoItems);
+			}
+			startExecution(ctx);
+			pi.sendMessage(
+				{ customType: PLAN_EXECUTE_MESSAGE_TYPE, content: getExecutionStartMessage(), display: true },
+				{ triggerTurn: true },
+			);
+			return;
+		}
 
 		if (choice?.startsWith("Execute")) {
 			startExecution(ctx);
-			const execMessage =
-				executionMode && todoItems.length > 0 ? `Execute the plan. Start with: ${todoItems[0].text}` : "Execute the plan you just created.";
 			pi.sendMessage(
-				{ customType: PLAN_EXECUTE_MESSAGE_TYPE, content: execMessage, display: true },
+				{ customType: PLAN_EXECUTE_MESSAGE_TYPE, content: getExecutionStartMessage(), display: true },
 				{ triggerTurn: true },
 			);
 			return;
