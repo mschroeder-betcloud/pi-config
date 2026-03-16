@@ -80,7 +80,8 @@ So the runtime worktree directories live **outside** the repo root.
 ### Clean-exit defaults
 
 - auto-generated worktrees created via `piw` are treated as disposable and are deleted on clean exit by default
-- explicitly named worktrees such as `piw feature-auth` are kept on clean exit by default
+- explicitly named worktrees such as `piw feature-auth` prompt on clean exit by default so you can choose whether to keep or delete them
+- clean-exit disposal follows the worktree's persisted creation metadata, so reopening an auto-generated worktree by name still deletes it on clean exit by default, while reopening an explicitly named worktree still prompts by default
 - clean-exit protection derives both `refs/heads/<target-branch>` and `refs/remotes/<remote>/<target-branch>` from the recorded integration metadata when available
 - if the worktree `HEAD` is already contained in either derived target ref, `piw` treats it as integrated for cleanup purposes
 - worktrees with uncommitted changes, commits not yet merged into either derived target ref, or unknown integration state still prompt whether to keep or delete unless you override that with flags

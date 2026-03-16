@@ -254,6 +254,129 @@ test("keep-clean preserves an auto-generated clean worktree", async () => {
 	}
 });
 
+test("prompts for a clean explicitly named worktree and keeps it when the user chooses keep", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+			env: {
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "k\n",
+		});
+
+		assert.equal(result.code, 0);
+		assert.match(result.stdout, /This pi session was running in worktree 'feature-auth'\./);
+		assert.match(result.stdout, /Choose \[k\/d\] \(default: k\):/);
+		assert.doesNotMatch(result.stdout, /Deleted worktree 'feature-auth'\./);
+		assert.ok((await listWorktreePaths(repo.repoPath)).includes(worktreePath));
+		await assertBranchExists(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("prompts for a clean explicitly named worktree and deletes it when the user chooses delete", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const result = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+			env: {
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "d\n",
+		});
+
+		assert.equal(result.code, 0);
+		assert.match(result.stdout, /This pi session was running in worktree 'feature-auth'\./);
+		assert.match(result.stdout, /Choose \[k\/d\] \(default: k\):/);
+		assert.match(result.stdout, /Deleted worktree 'feature-auth'\./);
+		assert.ok(!(await listWorktreePaths(repo.repoPath)).includes(worktreePath));
+		await assertBranchMissing(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("reopening an auto-generated clean worktree by name still deletes it by default", async () => {
+	const repo = await createTempRepo();
+	const capturePath = path.join(repo.tempRoot, "capture", "auto-reuse.json");
+
+	try {
+		const firstRun = await runPiw({
+			cwd: repo.repoPath,
+			args: ["--keep-clean"],
+			env: {
+				PIW_FAKE_PI_CAPTURE: capturePath,
+			},
+		});
+
+		assert.equal(firstRun.code, 0);
+		const capture = await readJson(capturePath);
+		const name = capture.env.PI_WORKTREE_NAME;
+		const worktreePath = expectedWorktreePath(repo.repoPath, name);
+		assert.ok((await listWorktreePaths(repo.repoPath)).includes(worktreePath));
+		await assertBranchExists(repo.repoPath, `piw/${name}`);
+
+		const secondRun = await runPiw({
+			cwd: repo.repoPath,
+			args: [name, "--", "-c"],
+		});
+
+		assert.equal(secondRun.code, 0);
+		assert.match(secondRun.stdout, new RegExp(`Reusing worktree '${name}'\\.`));
+		assert.match(secondRun.stdout, new RegExp(`Deleted worktree '${name}'\\.`));
+		assert.ok(!(await listWorktreePaths(repo.repoPath)).includes(worktreePath));
+		await assertBranchMissing(repo.repoPath, `piw/${name}`);
+	} finally {
+		await repo.cleanup();
+	}
+});
+
+test("reopening an explicitly named clean worktree still prompts by default", async () => {
+	const repo = await createTempRepo();
+	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");
+
+	try {
+		const firstRun = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth"],
+			env: {
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "k\n",
+		});
+
+		assert.equal(firstRun.code, 0);
+		assert.ok((await listWorktreePaths(repo.repoPath)).includes(worktreePath));
+		await assertBranchExists(repo.repoPath, "piw/feature-auth");
+
+		const secondRun = await runPiw({
+			cwd: repo.repoPath,
+			args: ["feature-auth", "--", "-c"],
+			env: {
+				PIW_ALLOW_NON_TTY_PROMPT: "1",
+			},
+			input: "d\n",
+		});
+
+		assert.equal(secondRun.code, 0);
+		assert.match(secondRun.stdout, /This pi session was running in worktree 'feature-auth'\./);
+		assert.match(secondRun.stdout, /Choose \[k\/d\] \(default: k\):/);
+		assert.match(secondRun.stdout, /Deleted worktree 'feature-auth'\./);
+		assert.ok(!(await listWorktreePaths(repo.repoPath)).includes(worktreePath));
+		await assertBranchMissing(repo.repoPath, "piw/feature-auth");
+	} finally {
+		await repo.cleanup();
+	}
+});
+
 test("delete-clean removes a clean managed worktree after pi exits", async () => {
 	const repo = await createTempRepo();
 	const worktreePath = expectedWorktreePath(repo.repoPath, "feature-auth");

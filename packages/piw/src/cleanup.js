@@ -128,6 +128,10 @@ function printProtectionDetails(protection) {
 }
 
 function getNonInteractiveKeepMessage(session, protection) {
+	if (protection.kind === "clean") {
+		return `piw: keeping clean worktree '${session.name}' because no interactive cleanup prompt is available.`;
+	}
+
 	if (protection.kind === "dirty") {
 		return `piw: keeping dirty worktree '${session.name}' (no interactive prompt available).`;
 	}
@@ -196,11 +200,29 @@ export async function maybeCleanupRunWorktree(session, options) {
 	const protection = await inspectWorktreeProtection(session);
 
 	if (protection.kind === "clean") {
-		const shouldDeleteClean = options.deleteClean || (!options.keepClean && !session.nameWasProvided);
-		if (shouldDeleteClean) {
+		if (options.keepClean) {
+			return { protection, action: "kept" };
+		}
+
+		if (options.deleteClean) {
 			await removeManagedWorktree({ repoRoot: session.repoRoot, name: session.name });
 			return { protection, action: "deleted" };
 		}
+
+		if (session.nameWasProvided === false) {
+			await removeManagedWorktree({ repoRoot: session.repoRoot, name: session.name });
+			return { protection, action: "deleted" };
+		}
+
+		if (session.nameWasProvided === true) {
+			const action = await promptProtectedAction(session, protection);
+			if (action === "delete") {
+				await removeManagedWorktree({ repoRoot: session.repoRoot, name: session.name });
+				return { protection, action: "deleted" };
+			}
+			return { protection, action: "kept" };
+		}
+
 		return { protection, action: "kept" };
 	}
 

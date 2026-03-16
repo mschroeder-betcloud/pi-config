@@ -189,11 +189,12 @@ async function handleRun(options) {
 		metadata = await loadSessionMetadata(worktree.path);
 	}
 
+	const cleanupNameWasProvided = typeof metadata?.nameWasProvided === "boolean" ? metadata.nameWasProvided : nameWasProvided;
 	const session = {
 		...worktree,
 		repoRoot: repo.repoRoot,
 		originalCwd,
-		nameWasProvided,
+		nameWasProvided: cleanupNameWasProvided,
 		metadata,
 	};
 
