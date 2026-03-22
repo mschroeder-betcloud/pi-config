@@ -51,13 +51,13 @@ Pi will auto-discover the top-level `extensions/` and `skills/` directories usin
 If you want a sensible default setup from this repo, start with:
 
 - [`questionnaire`](extensions/questionnaire/README.md)
-- [`session-modes`](extensions/session-modes/README.md)
+- [`read-only`](extensions/read-only/README.md)
 - optionally [`git-snapshot`](extensions/git-snapshot/README.md) — required if you want snapshot-backed commit workflows such as `my-commit-changes`
 
 A couple of useful relationships to know up front:
 
 - `questionnaire` is the companion extension that provides the `questionnaire` tool used by planning / structured clarification workflows
-- `session-modes` replaces three former local extensions with one unified mode + plan workflow
+- `read-only` provides a lightweight session safety mode with the same integrated footer-style badge UX
 - `git-snapshot` provides both `/snapshot` commands and the `git_snapshot_create` tool used by `my-commit-changes`
 
 ## Using `piw`
@@ -90,7 +90,7 @@ Enable these with `pi config` after installing the repo as a Pi package.
 | Extension | Purpose | Docs |
 | --- | --- | --- |
 | `questionnaire` | Structured interactive question/answer tool for short clarifications and confirmations. Companion extension used by other workflows in this repo. | [`extensions/questionnaire/README.md`](extensions/questionnaire/README.md) |
-| `session-modes` | Unified `default` / `read-only` / `plan` session modes with persisted session-linked plans and integrated footer UI. | [`extensions/session-modes/README.md`](extensions/session-modes/README.md) |
+| `read-only` | Persisted session-scoped read-only mode with restricted tools, safe bash allowlisting, and integrated footer UI. | [`extensions/read-only/README.md`](extensions/read-only/README.md) |
 | `git-snapshot` | Adds `/snapshot` commands plus the `git_snapshot_create` tool for stash-style workspace snapshots. | [`extensions/git-snapshot/README.md`](extensions/git-snapshot/README.md) |
 
 ## Skills

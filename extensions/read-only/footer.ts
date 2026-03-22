@@ -5,8 +5,6 @@ import path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
 import { truncateToWidth, visibleWidth } from "@mariozechner/pi-tui";
 
-import type { SessionMode } from "./types.ts";
-
 interface AssistantUsageLike {
 	input?: number;
 	output?: number;
@@ -65,27 +63,14 @@ function getAutoCompactionEnabled(cwd: string): boolean {
 	return enabled;
 }
 
-export function getModeBadgeText(mode: SessionMode): string | undefined {
-	if (mode === "read-only") return "🔒 read-only";
-	if (mode === "plan") return "📐 plan";
-	return undefined;
-}
-
-function getModeBadgeColor(mode: SessionMode): "accent" | "warning" | undefined {
-	if (mode === "read-only") return "warning";
-	if (mode === "plan") return "accent";
-	return undefined;
-}
-
-export function installSessionModesFooter(
+export function installReadOnlyFooter(
 	pi: ExtensionAPI,
 	ctx: ExtensionContext,
-	mode: SessionMode,
+	readOnlyEnabled: boolean,
 ): void {
 	if (!ctx.hasUI) return;
 
-	const modeBadge = getModeBadgeText(mode);
-	const modeBadgeColor = getModeBadgeColor(mode);
+	const modeBadge = readOnlyEnabled ? "🔒 read-only" : undefined;
 	const autoCompactEnabled = getAutoCompactionEnabled(ctx.cwd);
 
 	ctx.ui.setFooter((tui, theme, footerData) => {
@@ -185,10 +170,9 @@ export function installSessionModesFooter(
 				}
 
 				const styledModelInfo = theme.fg("dim", modelInfo);
-				const styledModeSuffix =
-					modeBadge && modeBadgeColor
-						? `${theme.fg("dim", modeSeparator)}${theme.fg(modeBadgeColor, modeBadge)}`
-						: "";
+				const styledModeSuffix = modeBadge
+					? `${theme.fg("dim", modeSeparator)}${theme.fg("warning", modeBadge)}`
+					: "";
 				const rightSide = `${styledModelInfo}${styledModeSuffix}`;
 				const rightSideWidth = visibleWidth(`${modelInfo}${modeSuffix}`);
 				const minPadding = 2;
