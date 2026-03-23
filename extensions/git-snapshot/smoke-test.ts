@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
+import { isSnapshotToolAuthorizedForEntries } from "./authorization.ts";
 import { createSnapshot } from "./snapshot.ts";
 
 const execFileAsync = promisify(execFile);
@@ -99,11 +100,47 @@ async function testInvalidRepoFailsClearly(): Promise<void> {
 	);
 }
 
+function testToolAuthorization(): void {
+	const skillMessage = `<skill name="my-commit-changes" location="/tmp/SKILL.md">\nReferences are relative to /tmp.\n\nBody\n</skill>`;
+	const otherSkillMessage = `<skill name="other-skill" location="/tmp/SKILL.md">\nReferences are relative to /tmp.\n\nBody\n</skill>`;
+
+	assert.equal(
+		isSnapshotToolAuthorizedForEntries([
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: skillMessage }] } },
+		]),
+		true,
+	);
+
+	assert.equal(
+		isSnapshotToolAuthorizedForEntries([
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: `${skillMessage}\n\ncommit everything` }] } },
+		]),
+		true,
+	);
+
+	assert.equal(
+		isSnapshotToolAuthorizedForEntries([
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: otherSkillMessage }] } },
+		]),
+		false,
+	);
+
+	assert.equal(
+		isSnapshotToolAuthorizedForEntries([
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: skillMessage }] } },
+			{ type: "message", message: { role: "assistant", content: [{ type: "text", text: "Planned commits" }] } },
+			{ type: "message", message: { role: "user", content: [{ type: "text", text: "continue" }] } },
+		]),
+		false,
+	);
+}
+
 async function main(): Promise<void> {
 	await testDirtyRepoFromRoot();
 	await testDirtyRepoFromSubdirTrackedOnly();
 	await testCleanRepoReturnsFalse();
 	await testInvalidRepoFailsClearly();
+	testToolAuthorization();
 	console.log("git-snapshot smoke tests passed");
 }
 

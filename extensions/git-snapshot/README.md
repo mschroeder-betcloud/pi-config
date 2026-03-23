@@ -1,6 +1,6 @@
 # Git Snapshot Extension
 
-Provides `/snapshot` commands plus a `git_snapshot_create` LLM tool for stash-style workspace safety snapshots.
+Provides `/snapshot` commands plus a guarded `git_snapshot_create` LLM tool for stash-style workspace safety snapshots.
 
 ## Public Surface
 
@@ -18,6 +18,8 @@ Provides `/snapshot` commands plus a `git_snapshot_create` LLM tool for stash-st
   - `trackedOnly?`
 
 The tool defaults to the current session repository when `repoPath` is omitted.
+
+The LLM tool is reserved for explicit `/skill:my-commit-changes` runs. For direct/manual snapshot requests, use `/snapshot create` instead.
 
 ## Frozen Behavior
 
@@ -59,3 +61,4 @@ The tool defaults to the current session repository when `repoPath` is omitted.
 
 - Direct invocation of old private helper scripts is not a supported interface.
 - Skills in this repo should use the `git_snapshot_create` tool instead of shelling out to snapshot internals.
+- General agent turns are blocked from using `git_snapshot_create`; the extension only allows it for explicit `/skill:my-commit-changes` runs.
