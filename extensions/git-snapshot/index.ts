@@ -3,11 +3,9 @@ import { resolve } from "node:path";
 import {
 	type ExtensionAPI,
 	type ExtensionCommandContext,
-	type ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
-import { isSnapshotToolAuthorizedForEntries, type SnapshotAuthorizationEntry } from "./authorization.js";
 import {
 	createSnapshot,
 	resolveRepoRoot,
@@ -71,14 +69,8 @@ const SNAPSHOT_SUBCOMMANDS = new Set<SnapshotSubcommand | "--help" | "-h">([
 ]);
 
 const SNAPSHOT_TOOL_NAME = "git_snapshot_create";
-const SNAPSHOT_SKILL_NAME = "my-commit-changes";
 const SNAPSHOT_STASH_FORMAT = "%gd%x09%H%x09%gs";
 const DEFAULT_LIST_LIMIT = 10;
-
-const SNAPSHOT_TOOL_BLOCK_REASON = [
-	`${SNAPSHOT_TOOL_NAME} is reserved for explicit /skill:${SNAPSHOT_SKILL_NAME} runs.`,
-	"For manual snapshots, use /snapshot create instead.",
-].join(" ");
 
 const SNAPSHOT_HELP_TEXT = [
 	"Git Snapshot",
@@ -98,10 +90,6 @@ const SNAPSHOT_HELP_TEXT = [
 	"  list     List snapshots created by this extension",
 	"  restore  Restore a previously created snapshot",
 ].join("\n");
-
-function isSnapshotToolAuthorized(ctx: ExtensionContext): boolean {
-	return isSnapshotToolAuthorizedForEntries(ctx.sessionManager.getBranch() as SnapshotAuthorizationEntry[]);
-}
 
 function tokenizeArgs(input: string): string[] {
 	const tokens: string[] = [];
@@ -458,25 +446,11 @@ async function handleRestore(pi: ExtensionAPI, args: string[], ctx: ExtensionCom
 }
 
 export default function gitSnapshotExtension(pi: ExtensionAPI): void {
-	pi.on("tool_call", (event, ctx) => {
-		if (event.toolName !== SNAPSHOT_TOOL_NAME) {
-			return;
-		}
-
-		if (isSnapshotToolAuthorized(ctx)) {
-			return;
-		}
-
-		return {
-			block: true,
-			reason: SNAPSHOT_TOOL_BLOCK_REASON,
-		};
-	});
-
 	pi.registerTool({
 		name: SNAPSHOT_TOOL_NAME,
 		label: "Git Snapshot Create",
-		description: `Reserved snapshot tool for explicit /skill:${SNAPSHOT_SKILL_NAME} workflows. Use /snapshot create for direct snapshot requests.`,
+		description:
+			"Create a stash-style safety snapshot of the current git workspace without modifying the current worktree or index state. Use this immediately before git-mutating commands such as git add, git reset, git commit, git rebase, git restore, or similar workspace/history changes, or when the user explicitly asks for a safety snapshot. Do not use this for routine inspection or planning-only tasks.",
 		parameters: SnapshotCreateToolParams,
 		async execute(_toolCallId, params, signal, _onUpdate, ctx) {
 			const result = await createSnapshot({

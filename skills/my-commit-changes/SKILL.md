@@ -48,6 +48,12 @@ Show a numbered list of proposed commits, each with:
 
 Then proceed directly to snapshot creation and execution unless the user interrupts or gives contrary instructions.
 
+Critical completion rule:
+
+- Do not end your turn after presenting the plan.
+- If you have not yet called `git_snapshot_create`, your execution of this skill is incomplete.
+- After presenting the plan, immediately call `git_snapshot_create` in the same run unless the user explicitly asked to stop after the plan.
+
 ## Step 4: Create a safety snapshot
 
 Before performing any mutating git command (`git reset`, `git add`, or `git commit`), call the `git_snapshot_create` tool.
