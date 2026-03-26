@@ -91,7 +91,7 @@ Enable these with `pi config` after installing the repo as a Pi package.
 | --- | --- | --- |
 | `git-snapshot` | Adds `/snapshot` commands plus the `git_snapshot_create` tool for stash-style workspace snapshots. | [`extensions/git-snapshot/README.md`](extensions/git-snapshot/README.md) |
 | `my-new-cmux-tab` | Adds `/my-new-cmux-tab` to open a new sibling cmux tab, using the active `piw` worktree root when applicable. | [`extensions/my-new-cmux-tab/README.md`](extensions/my-new-cmux-tab/README.md) |
-| `my-open-local-apps` | Adds `/my-open-zed` and `/my-open-fork`, using the active `piw` worktree root when applicable. | [`extensions/my-open-local-apps/README.md`](extensions/my-open-local-apps/README.md) |
+| `my-open-local-apps` | Adds `/my-open-zed`, `/my-open-vscode`, and `/my-open-fork`, using the active `piw` worktree root when applicable. | [`extensions/my-open-local-apps/README.md`](extensions/my-open-local-apps/README.md) |
 | `my-zed-pide` | Adds `/my-zed-pide-install` and `/my-zed-pide-remove` to manage an idempotent Zed-side `Ctrl+Alt+;` integration that writes `~/.pi/ide-selection.json`. | [`extensions/my-zed-pide/README.md`](extensions/my-zed-pide/README.md) |
 | `my-worktree-pill` | Adds `/my-worktree-pill` to manually set or clear a cmux sidebar pill, defaulting to the active `piw` worktree name when available. | [`extensions/my-worktree-pill/README.md`](extensions/my-worktree-pill/README.md) |
 | `questionnaire` | Structured interactive question/answer tool for short clarifications and confirmations. Companion extension used by other workflows in this repo. | [`extensions/questionnaire/README.md`](extensions/questionnaire/README.md) |
