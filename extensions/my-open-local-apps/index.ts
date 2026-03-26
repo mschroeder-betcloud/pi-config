@@ -26,6 +26,11 @@ const COMMANDS: CommandSpec[] = [
 		description: "Open Zed at the active piw worktree root when applicable, otherwise the current session directory.",
 	},
 	{
+		name: "my-open-vscode",
+		appName: "Visual Studio Code",
+		description: "Open Visual Studio Code at the active piw worktree root when applicable, otherwise the current session directory.",
+	},
+	{
 		name: "my-open-fork",
 		appName: "Fork",
 		description: "Open Fork at the active piw worktree root when applicable, otherwise the current session directory.",
